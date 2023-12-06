@@ -77,10 +77,11 @@ func (draw *ImageDrawer) Reset() {
 }
 
 // need check exists !
-func (draw *ImageDrawer) SetImage(path string) error {
+func (draw *ImageDrawer) SetImage(path string) (bool, string) {
 	f, err := os.Open(path)
 	if err != nil {
-		return err
+		fmt.Println(err)
+		return false, err.Error()
 	}
 	defer f.Close()
 	draw.Reset()
@@ -88,14 +89,15 @@ func (draw *ImageDrawer) SetImage(path string) error {
 
 	draw.img, _, err = image.Decode(f)
 	if err != nil {
-		return err
+		fmt.Println(err)
+		return false, err.Error()
 	}
 
 	fmt.Println("Image Size: ", draw.img.Bounds())
 	if (draw.img.Bounds().Dx() > 200 || draw.img.Bounds().Dy() > 200) {
-		return &DrawerError{"Too Large !!!"}
+		return false, "Too Large !!!"
 	}
-	return nil
+	return true, ""
 }
 
 func (draw *ImageDrawer) ImageSize() (int, int) {
