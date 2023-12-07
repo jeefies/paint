@@ -5,6 +5,7 @@ import (
 	"image"
 	"time"
 	"os"
+	"context"
 	"math/rand"
 	_ "image/jpeg"
 	_ "image/png"
@@ -21,11 +22,11 @@ func (err DrawerError) Error() string {
 const (
 	INTERVAL = 5
 	WORKER_COUNT = 5
-	WAIT_BUF = 1000
 	UNUSED_BUF = 50
 	RESET_BUF = 100
 	UNCERT_LEN = 40000
 	UPDATE_INTERVAL = 60
+	WAIT_BUF = 6000
 )
 
 type ImageDrawer struct {
@@ -39,7 +40,8 @@ type ImageDrawer struct {
 	waited chan int
 	// unused tokens
 	unused chan int
-	reset chan int
+	ctx context.Context
+	cancelFunc context.CancelFunc
 }
 
 func NewDrawer(api *Api) (*ImageDrawer) {
@@ -49,7 +51,7 @@ func NewDrawer(api *Api) (*ImageDrawer) {
 	draw.waited = make(chan int, WAIT_BUF)
 	draw.uncert = make([]bool, UNCERT_LEN)
 	draw.unused = make(chan int, UNUSED_BUF)
-	draw.reset = nil
+	draw.ctx, draw.cancelFunc = nil, nil
 	return draw
 }
 
@@ -59,8 +61,9 @@ func (draw *ImageDrawer) AddToken(uid int, tok string) {
 }
 
 func (draw *ImageDrawer) Reset() {
-	if draw.reset != nil {
-		draw.reset <- 1
+	if draw.cancelFunc != nil {
+		draw.cancelFunc()
+		draw.ctx, draw.cancelFunc = nil, nil
 	}
 
 	draw.waited = nil
@@ -77,11 +80,11 @@ func (draw *ImageDrawer) Reset() {
 }
 
 // need check exists !
-func (draw *ImageDrawer) SetImage(path string) (bool, string) {
+func (draw *ImageDrawer) SetImage(path string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		fmt.Println(err)
-		return false, err.Error()
+		return err
 	}
 	defer f.Close()
 	draw.Reset()
@@ -90,14 +93,14 @@ func (draw *ImageDrawer) SetImage(path string) (bool, string) {
 	draw.img, _, err = image.Decode(f)
 	if err != nil {
 		fmt.Println(err)
-		return false, err.Error()
+		return err
 	}
 
 	fmt.Println("Image Size: ", draw.img.Bounds())
 	if (draw.img.Bounds().Dx() > 200 || draw.img.Bounds().Dy() > 200) {
-		return false, "Too Large !!!"
+		return &DrawerError{"Too Large !!!"};
 	}
-	return true, ""
+	return nil
 }
 
 func (draw *ImageDrawer) ImageSize() (int, int) {
@@ -106,9 +109,9 @@ func (draw *ImageDrawer) ImageSize() (int, int) {
 
 func (draw *ImageDrawer) Start() {
 	draw.Reset()
-	draw.reset = make(chan int, RESET_BUF)
+	draw.ctx, draw.cancelFunc = context.WithCancel(context.Background())
 
-	go draw.check()
+	go draw.check(draw.ctx)
 	for i := 0; i < WORKER_COUNT; i++ {
 		go draw.work()
 	}
@@ -127,17 +130,24 @@ func (draw *ImageDrawer) work() {
 		if (!ok) {
 			return
 		}
+		draw.uncert[v] = false
 		uid := <-draw.unused
 		x, y := v / ImY, v % ImY
 		r, g, b, _ := draw.img.At(x, y).RGBA()
 		r, g, b = r >> 8, g >> 8, b >> 8
-		fmt.Println("Try Setting ", draw.X + x, draw.Y, r, g, b)
-		draw.api.SetPixel(x + draw.X, y + draw.Y, int((r << 16) | (g << 8) | b), uid, draw.tokens[uid])
-		draw.uncert[v] = false
-		go func() {
-			time.Sleep(time.Duration(INTERVAL) * time.Second + time.Duration(rand.Intn(500)))
+		// fmt.Println("Try Setting ", draw.X + x, draw.Y, r, g, b)
+		ok = draw.api.SetPixel(x + draw.X, y + draw.Y, int((r << 16) | (g << 8) | b), uid, draw.tokens[uid])
+		if ok {
+			if rem := len(draw.waited); rem != 0 {
+				fmt.Println("Still ", rem, "pixels in queue... >=", rem * INTERVAL / len(draw.tokens), "s")
+			}
+			go func() {
+				time.Sleep(time.Duration(INTERVAL) * time.Second + time.Duration(rand.Intn(100) - 500))
+				draw.unused <- uid
+			}()
+		} else {
 			draw.unused <- uid
-		}()
+		}
 	}
 }
 
@@ -145,7 +155,7 @@ func (draw *ImageDrawer) GetTokens() map[int] string {
 	return draw.tokens
 }
 
-func (draw *ImageDrawer) check() {
+func (draw *ImageDrawer) check(ctx context.Context) {
 	timeout := make(chan int, 1)
 	waitTime := time.Duration(UPDATE_INTERVAL)
 	for {
@@ -156,8 +166,7 @@ func (draw *ImageDrawer) check() {
 
 		select {
 		case <-timeout:
-		case <-draw.reset:
-			draw.reset = nil
+		case <-ctx.Done():
 			break
 		}
 
