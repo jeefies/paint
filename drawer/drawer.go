@@ -63,7 +63,7 @@ func (draw *ImageDrawer) AddToken(uid int, tok string) {
 func (draw *ImageDrawer) Reset() {
 	if draw.cancelFunc != nil {
 		draw.cancelFunc()
-		draw.ctx, draw.cancelFunc = nil, nil
+		draw.cancelFunc = nil
 	}
 
 	draw.waited = nil
@@ -83,16 +83,16 @@ func (draw *ImageDrawer) Reset() {
 func (draw *ImageDrawer) SetImage(path string) error {
 	f, err := os.Open(path)
 	if err != nil {
-		fmt.Println(err)
 		return err
 	}
+
 	defer f.Close()
+
 	draw.Reset()
 	draw.ImgPath = path
 
 	draw.img, _, err = image.Decode(f)
 	if err != nil {
-		fmt.Println(err)
 		return err
 	}
 
@@ -123,11 +123,33 @@ func (draw *ImageDrawer) GetPixel(x, y int) int {
 	return int((r << 16) | (g << 8) | b)
 }
 
+func (draw *ImageDrawer) WorkStatus() int {
+	if draw.ctx == nil {
+		return -1
+	}
+
+	if rem := len(draw.waited); rem < 3 {
+		return 0
+	} else if len(draw.tokens) == 0 {
+		return -2
+	} else {
+		return rem * INTERVAL / len(draw.tokens)
+	}
+}
+
 func (draw *ImageDrawer) work() {
 	ImY := draw.img.Bounds().Dy()
+	var v int
+	var ok bool
 	for {
-		v, ok := <-draw.waited
+		select {
+			case v, ok = <- draw.waited:
+			case <-draw.ctx.Done():
+				fmt.Println("Work Quit...")
+				break
+		}
 		if (!ok) {
+			fmt.Println("Work Quit...")
 			return
 		}
 		draw.uncert[v] = false
@@ -152,6 +174,9 @@ func (draw *ImageDrawer) work() {
 }
 
 func (draw *ImageDrawer) GetTokens() map[int] string {
+	for k, v := range draw.api.cache {
+		draw.tokens[k] = v
+	}
 	return draw.tokens
 }
 
@@ -167,6 +192,7 @@ func (draw *ImageDrawer) check(ctx context.Context) {
 		select {
 		case <-timeout:
 		case <-ctx.Done():
+			fmt.Println("Check Quit...")
 			break
 		}
 

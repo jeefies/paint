@@ -1,5 +1,5 @@
-world.png
-855 0
+miku2.png
+684 0
 10
 747541 19mmqgzk
 78206 7bf00pz2

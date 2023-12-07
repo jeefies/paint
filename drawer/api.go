@@ -5,6 +5,7 @@ import (
 	"io"
 	"bufio"
 	"fmt"
+	"sync"
 	"net/url"
 	"strconv"
 	"strings"
@@ -192,10 +193,11 @@ func setPixel(x, y, c, uid int, token string) bool {
 
 type Api struct {
 	cache map[int] string
+	lock *sync.RWMutex
 }
 
 func NewApi() *Api {
-	return &Api{make(map[int] string)}
+	return &Api{make(map[int] string), new(sync.RWMutex)}
 }
 
 func (api *Api) Update() {
@@ -240,11 +242,15 @@ func (api *Api) ReadToken() {
 	fmt.Fscan(f, &n)
 	for i := 0; i < n; i++ {
 		fmt.Fscan(f, &uid, &tok)
+		api.lock.WLock()
 		api.cache[uid] = tok
+		api.lock.WUnlock()
+		fmt.Println("Cache ", uid, tok)
 	}
 }
 
 func (api *Api) GetToken(uid int, paste string) (bool, string) {
+	api.lock
 	tok, ok := api.cache[uid]
 	if ok {
 		return ok, tok
@@ -257,6 +263,22 @@ func (api *Api) GetToken(uid int, paste string) (bool, string) {
 	}
 	return ok, tok
 }
+
+func (api *Api) GetTokenOrEmpty(uid int, paste string) string {
+	tok, ok := api.cache[uid]
+	if ok {
+		return tok
+	}
+
+	ok, tok = getToken(uid, paste)
+	if ok {
+		api.cache[uid] = tok
+		api.SaveToken()
+		return tok
+	}
+	return ""
+}
+
 
 func (api *Api) SetPixel(x, y, c, uid int, token string) bool {
 	return setPixel(x, y, c, uid, token)
