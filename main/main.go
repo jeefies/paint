@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"bufio"
 	"os"
+	"io"
 	draw "jeefy/drawer"
 )
 
@@ -142,13 +143,12 @@ func readConfig() {
 
 	var path string
 	fmt.Fscanln(f, &path)
-	drawer.SetImage(path)
-
 	var x, y int
 	fmt.Fscanln(f, &x, &y)
+
 	drawer.X = x
 	drawer.Y = y
-	drawer.Reset()
+	drawer.SetImage(path)
 
 	var n int
 	fmt.Fscanln(f, &n)
@@ -158,8 +158,10 @@ func readConfig() {
 			var uid int
 			var paste string
 			_, err := fmt.Fscan(f, &uid, &paste)
-			if err != nil {
-				fmt.Println(err)
+			if err == io.EOF {
+				return
+			} else if err != nil {
+				fmt.Println("Error: ", err)
 				return
 			}
 
@@ -170,7 +172,7 @@ func readConfig() {
 				return
 			}
 			drawer.AddToken(uid, tok)
-			fmt.Println("Token ", uid, "fetched", tok, "!")
+			fmt.Println("Token", uid, "fetched", tok, "!")
 		}
 	}
 }

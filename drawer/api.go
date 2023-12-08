@@ -214,6 +214,27 @@ func (api *Api) GetPixel(x, y int) int {
 	return getPixel(x, y)
 }
 
+func (api *Api) getCache(uid int) (string, bool) {
+	api.lock.RLock()
+	tok, ok := api.cache[uid]
+	api.lock.RUnlock()
+	return tok, ok
+}
+
+func (api *Api) setCache(uid int, tok string) {
+	api.lock.Lock()
+	api.cache[uid] = tok
+	api.lock.Unlock()
+}
+
+func (api *Api) ClearTokens() {
+	api.lock.Lock()
+	api.cache = make(map[int] string)
+	api.lock.Unlock()
+
+	api.SaveToken()
+}
+
 func (api *Api) SaveToken() {
 	f, err := os.OpenFile("_api.txt", os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -223,6 +244,10 @@ func (api *Api) SaveToken() {
 	defer f.Close()
 
 	fmt.Fprintln(f, len(api.cache))
+
+	api.lock.RLock()
+	defer api.lock.RUnlock()
+
 	for k, v := range api.cache {
 		fmt.Fprintln(f, k, v)
 	}
@@ -242,37 +267,34 @@ func (api *Api) ReadToken() {
 	fmt.Fscan(f, &n)
 	for i := 0; i < n; i++ {
 		fmt.Fscan(f, &uid, &tok)
-		api.lock.WLock()
-		api.cache[uid] = tok
-		api.lock.WUnlock()
+		api.setCache(uid, tok)
 		fmt.Println("Cache ", uid, tok)
 	}
 }
 
 func (api *Api) GetToken(uid int, paste string) (bool, string) {
-	api.lock
-	tok, ok := api.cache[uid]
+	tok, ok := api.getCache(uid)
 	if ok {
 		return ok, tok
 	}
 
 	ok, tok = getToken(uid, paste)
 	if ok {
-		api.cache[uid] = tok
+		api.setCache(uid, tok)
 		api.SaveToken()
 	}
 	return ok, tok
 }
 
 func (api *Api) GetTokenOrEmpty(uid int, paste string) string {
-	tok, ok := api.cache[uid]
+	tok, ok := api.getCache(uid)
 	if ok {
 		return tok
 	}
 
 	ok, tok = getToken(uid, paste)
 	if ok {
-		api.cache[uid] = tok
+		api.setCache(uid, tok)
 		api.SaveToken()
 		return tok
 	}

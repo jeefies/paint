@@ -34,7 +34,6 @@ type ImageDrawer struct {
 	ImgPath string
 	img image.Image
 	X, Y int
-	tokens map[int] string
 	uncert []bool
 	// pixels waiting to draw
 	waited chan int
@@ -47,7 +46,6 @@ type ImageDrawer struct {
 func NewDrawer(api *Api) (*ImageDrawer) {
 	draw := &ImageDrawer{}
 	draw.api = api
-	draw.tokens = make(map[int] string)
 	draw.waited = make(chan int, WAIT_BUF)
 	draw.uncert = make([]bool, UNCERT_LEN)
 	draw.unused = make(chan int, UNUSED_BUF)
@@ -56,11 +54,11 @@ func NewDrawer(api *Api) (*ImageDrawer) {
 }
 
 func (draw *ImageDrawer) AddToken(uid int, tok string) {
-	draw.tokens[uid] = tok
 	draw.unused <- uid
 }
 
 func (draw *ImageDrawer) Reset() {
+	fmt.Println("Reset...")
 	if draw.cancelFunc != nil {
 		draw.cancelFunc()
 		draw.cancelFunc = nil
@@ -73,8 +71,9 @@ func (draw *ImageDrawer) Reset() {
 	}
 	draw.waited = make(chan int, WAIT_BUF)
 	draw.unused = make(chan int, UNUSED_BUF)
-	for k := range draw.tokens {
-		fmt.Println("Unused ", k)
+	draw.api.lock.RLock()
+	defer draw.api.lock.RUnlock()
+	for k := range draw.api.cache {
 		draw.unused <- k
 	}
 }
@@ -124,16 +123,16 @@ func (draw *ImageDrawer) GetPixel(x, y int) int {
 }
 
 func (draw *ImageDrawer) WorkStatus() int {
-	if draw.ctx == nil {
+	if draw.cancelFunc == nil {
 		return -1
 	}
 
-	if rem := len(draw.waited); rem < 3 {
+	if rem := len(draw.waited); rem < 2 {
 		return 0
-	} else if len(draw.tokens) == 0 {
+	} else if len(draw.api.cache) == 0 {
 		return -2
 	} else {
-		return rem * INTERVAL / len(draw.tokens)
+		return rem * INTERVAL / len(draw.api.cache)
 	}
 }
 
@@ -146,7 +145,7 @@ func (draw *ImageDrawer) work() {
 			case v, ok = <- draw.waited:
 			case <-draw.ctx.Done():
 				fmt.Println("Work Quit...")
-				break
+				return
 		}
 		if (!ok) {
 			fmt.Println("Work Quit...")
@@ -158,10 +157,15 @@ func (draw *ImageDrawer) work() {
 		r, g, b, _ := draw.img.At(x, y).RGBA()
 		r, g, b = r >> 8, g >> 8, b >> 8
 		// fmt.Println("Try Setting ", draw.X + x, draw.Y, r, g, b)
-		ok = draw.api.SetPixel(x + draw.X, y + draw.Y, int((r << 16) | (g << 8) | b), uid, draw.tokens[uid])
+		tok, ok := draw.api.getCache(uid)
+		if !ok {
+			continue
+		}
+
+		ok = draw.api.SetPixel(x + draw.X, y + draw.Y, int((r << 16) | (g << 8) | b), uid, tok)
 		if ok {
 			if rem := len(draw.waited); rem != 0 {
-				fmt.Println("Still ", rem, "pixels in queue... >=", rem * INTERVAL / len(draw.tokens), "s")
+				fmt.Println("Still ", rem, "pixels in queue... >=", rem * INTERVAL / len(draw.api.cache), "s")
 			}
 			go func() {
 				time.Sleep(time.Duration(INTERVAL) * time.Second + time.Duration(rand.Intn(100) - 500))
@@ -174,10 +178,14 @@ func (draw *ImageDrawer) work() {
 }
 
 func (draw *ImageDrawer) GetTokens() map[int] string {
+	draw.api.lock.RLock()
+	defer draw.api.lock.RUnlock()
+
+	copyed := make(map[int] string)
 	for k, v := range draw.api.cache {
-		draw.tokens[k] = v
+		copyed[k] = v
 	}
-	return draw.tokens
+	return copyed
 }
 
 func (draw *ImageDrawer) check(ctx context.Context) {
