@@ -1,17 +1,17 @@
 package drawer
 
 import (
-	"os"
-	"io"
 	"bufio"
+	"encoding/json"
 	"fmt"
-	"sync"
+	"io"
+	"io/ioutil"
+	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
-	"net/http"
-	"io/ioutil"
-	"encoding/json"
+	"sync"
 
 	"image"
 	"image/color"
@@ -19,14 +19,14 @@ import (
 )
 
 const (
-	rootUrl = "https://www.oi-search.com/paintboard"
+	rootUrl  = "https://www.oi-search.com/paintboard"
 	boardUrl = rootUrl + "/board"
 	paintUrl = rootUrl + "/paint"
 	tokenUrl = rootUrl + "/gettoken"
 )
 
 const (
-	WIDTH = 1000
+	WIDTH  = 1000
 	HEIGHT = 600
 )
 
@@ -36,7 +36,7 @@ func init() {
 }
 
 func getPixel(x int, y int) int {
-	return board[x * HEIGHT + y]
+	return board[x*HEIGHT+y]
 }
 
 func byteToHex(b byte) int {
@@ -55,7 +55,7 @@ func hexToByte(c int) byte {
 	}
 }
 
-func pixelToHex(rgb int) (string) {
+func pixelToHex(rgb int) string {
 	bs := make([]byte, 6)
 	bs[5] = hexToByte((rgb >> 0) & 0xf)
 	bs[4] = hexToByte((rgb >> 4) & 0xf)
@@ -74,7 +74,7 @@ func getBoard() {
 	}
 	defer resp.Body.Close()
 
-	f, err := os.OpenFile("board.txt", os.O_CREATE | os.O_WRONLY, 0644)
+	f, err := os.OpenFile("board.txt", os.O_CREATE|os.O_WRONLY, 0644)
 	defer f.Close()
 
 	reader := bufio.NewReader(resp.Body)
@@ -98,11 +98,11 @@ func getBoard() {
 		for j := 0; j < HEIGHT; j++ {
 			rgb := 0
 			for k := 0; k < 6; k++ {
-				rgb |= byteToHex(buffer[j * 6 + 5 - k]) << (4 * k)
+				rgb |= byteToHex(buffer[j*6+5-k]) << (4 * k)
 			}
-			board[i * HEIGHT + j] = rgb
+			board[i*HEIGHT+j] = rgb
 		}
-		if i % 10 == 0 {
+		if i%10 == 0 {
 			fmt.Println("Line ", i, "done")
 		}
 	}
@@ -113,7 +113,7 @@ func saveBoard(fp io.Writer) error {
 
 	for i := 0; i < WIDTH; i++ {
 		for j := 0; j < HEIGHT; j++ {
-			pix := board[i * HEIGHT + j]
+			pix := board[i*HEIGHT+j]
 			img.Set(i, j, color.NRGBA{
 				R: uint8(pix >> 16),
 				G: uint8((pix >> 8) & 0xFF),
@@ -127,8 +127,8 @@ func saveBoard(fp io.Writer) error {
 }
 
 type TokenResp struct {
-	status int `json:"status"`
-	data string `json:"data"`
+	status int    `json:"status"`
+	data   string `json:"data"`
 }
 
 func ParseResp(bs []byte) (token TokenResp) {
@@ -164,7 +164,9 @@ func getToken(uid int, paste string) (bool, string) {
 
 	tok := ParseResp(bs)
 	tok.status = resp.StatusCode
-	if !strings.Contains(string(bs), "200") { return false, tok.data }
+	if !strings.Contains(string(bs), "200") {
+		return false, tok.data
+	}
 	fmt.Println("Get ok!")
 	return true, tok.data
 }
@@ -175,7 +177,7 @@ func setPixel(x, y, c, uid int, token string) bool {
 	resp, err := http.PostForm(paintUrl, body)
 
 	if err != nil {
-		fmt.Println("Counld not set Pixel")
+		fmt.Println("Counld not set Pixel:", err)
 		return false
 	}
 
@@ -192,12 +194,12 @@ func setPixel(x, y, c, uid int, token string) bool {
 }
 
 type Api struct {
-	cache map[int] string
-	lock *sync.RWMutex
+	cache map[int]string
+	lock  *sync.RWMutex
 }
 
 func NewApi() *Api {
-	return &Api{make(map[int] string), new(sync.RWMutex)}
+	return &Api{make(map[int]string), new(sync.RWMutex)}
 }
 
 func (api *Api) Update() {
@@ -229,7 +231,7 @@ func (api *Api) setCache(uid int, tok string) {
 
 func (api *Api) ClearTokens() {
 	api.lock.Lock()
-	api.cache = make(map[int] string)
+	api.cache = make(map[int]string)
 	api.lock.Unlock()
 
 	api.SaveToken()
@@ -301,8 +303,6 @@ func (api *Api) GetTokenOrEmpty(uid int, paste string) string {
 	return ""
 }
 
-
 func (api *Api) SetPixel(x, y, c, uid int, token string) bool {
 	return setPixel(x, y, c, uid, token)
 }
-

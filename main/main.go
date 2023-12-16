@@ -1,12 +1,12 @@
 package main
 
 import (
-	"fmt"
 	"bufio"
-	"os"
+	"fmt"
 	"io"
-	"time"
 	draw "jeefy/drawer"
+	"os"
+	"time"
 )
 
 var api *draw.Api
@@ -123,17 +123,6 @@ func StartDraw() {
 	drawer.Start()
 }
 
-func readTokens() {
-	f, err := os.Open("tok.txt")
-	if err != nil {
-		fmt.Println("Init tokens failed")
-		return
-	}
-	defer f.Close()
-
-
-}
-
 func readConfig() {
 	f, err := os.Open("config.txt")
 	if err != nil {
@@ -184,32 +173,33 @@ func main() {
 	api.ReadToken()
 	readConfig()
 
-	if os.Args[1] == "start" {
-		time.Sleep(5 * time.Second)
+	if len(os.Args) > 1 && os.Args[1] == "start" {
+		time.Sleep(3 * time.Second)
 		StartDraw()
 	}
 
 	for {
 		fmt.Print(">>> ")
 		opt, _ := reader.ReadString('\n')
-		if (len(opt) < 1) { continue; }
+		if len(opt) < 1 {
+			continue
+		}
 
-
-		if (opt[0] == 'a') {
+		if opt[0] == 'a' {
 			AddToken()
-		} else if (opt[0] == 'f') {
+		} else if opt[0] == 'f' {
 			FixToken()
-		} else if (opt[0] == 'i') {
+		} else if opt[0] == 'i' {
 			SetImage()
-		} else if (opt[0] == 'x') {
+		} else if opt[0] == 'x' {
 			SetX()
-		} else if (opt[0] == 'y') {
+		} else if opt[0] == 'y' {
 			SetY()
-		} else if (opt[0] == 's') {
+		} else if opt[0] == 's' {
 			StartDraw()
-		} else if (opt[0] == 'p') {
+		} else if opt[0] == 'p' {
 			PrintPixel()
-		} else if (opt[0] == 'u') {
+		} else if opt[0] == 'u' {
 			api.Update()
 		} else {
 			fmt.Println("帮助：")
@@ -227,7 +217,7 @@ func main() {
 				fmt.Print(k, ' ')
 			}
 			fmt.Println()
-			continue;
+			continue
 		}
 	}
 }

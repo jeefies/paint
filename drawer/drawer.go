@@ -1,14 +1,14 @@
 package drawer
 
 import (
+	"context"
 	"fmt"
 	"image"
-	"time"
-	"os"
-	"context"
-	"math/rand"
 	_ "image/jpeg"
 	_ "image/png"
+	"math/rand"
+	"os"
+	"time"
 )
 
 type DrawerError struct {
@@ -20,30 +20,30 @@ func (err DrawerError) Error() string {
 }
 
 const (
-	INTERVAL = 30
-	WORKER_COUNT = 4
-	UNUSED_BUF = 50
-	RESET_BUF = 100
-	UNCERT_LEN = 40000
+	INTERVAL        = 30
+	WORKER_COUNT    = 4
+	UNUSED_BUF      = 50
+	RESET_BUF       = 100
+	UNCERT_LEN      = 40000
 	UPDATE_INTERVAL = 60 * 5
-	WAIT_BUF = 6000
+	WAIT_BUF        = 40000
 )
 
 type ImageDrawer struct {
-	api *Api
+	api     *Api
 	ImgPath string
-	img image.Image
-	X, Y int
-	uncert []bool
+	img     image.Image
+	X, Y    int
+	uncert  []bool
 	// pixels waiting to draw
 	waited chan int
 	// unused tokens
-	unused chan int
-	ctx context.Context
+	unused     chan int
+	ctx        context.Context
 	cancelFunc context.CancelFunc
 }
 
-func NewDrawer(api *Api) (*ImageDrawer) {
+func NewDrawer(api *Api) *ImageDrawer {
 	draw := &ImageDrawer{}
 	draw.api = api
 	draw.waited = make(chan int, WAIT_BUF)
@@ -96,8 +96,8 @@ func (draw *ImageDrawer) SetImage(path string) error {
 	}
 
 	fmt.Println("Image Size: ", draw.img.Bounds())
-	if (draw.img.Bounds().Dx() > 200 || draw.img.Bounds().Dy() > 200) {
-		return &DrawerError{"Too Large !!!"};
+	if draw.img.Bounds().Dx() > 200 || draw.img.Bounds().Dy() > 200 {
+		return &DrawerError{"Too Large !!!"}
 	}
 	return nil
 }
@@ -118,7 +118,7 @@ func (draw *ImageDrawer) Start() {
 
 func (draw *ImageDrawer) GetPixel(x, y int) int {
 	r, g, b, _ := draw.img.At(x, y).RGBA()
-	r, g, b = r >> 8, g >> 8, b >> 8
+	r, g, b = r>>8, g>>8, b>>8
 	return int((r << 16) | (g << 8) | b)
 }
 
@@ -142,33 +142,33 @@ func (draw *ImageDrawer) work() {
 	var ok bool
 	for {
 		select {
-			case v, ok = <- draw.waited:
-			case <-draw.ctx.Done():
-				fmt.Println("Work Quit...")
-				return
+		case v, ok = <-draw.waited:
+		case <-draw.ctx.Done():
+			fmt.Println("Work Quit...")
+			return
 		}
-		if (!ok) {
+		if !ok {
 			fmt.Println("Work Quit...")
 			return
 		}
 		draw.uncert[v] = false
 		uid := <-draw.unused
-		x, y := v / ImY, v % ImY
+		x, y := v/ImY, v%ImY
 		r, g, b, _ := draw.img.At(x, y).RGBA()
-		r, g, b = r >> 8, g >> 8, b >> 8
+		r, g, b = r>>8, g>>8, b>>8
 		// fmt.Println("Try Setting ", draw.X + x, draw.Y, r, g, b)
 		tok, ok := draw.api.getCache(uid)
 		if !ok {
 			continue
 		}
 
-		ok = draw.api.SetPixel(x + draw.X, y + draw.Y, int((r << 16) | (g << 8) | b), uid, tok)
+		ok = draw.api.SetPixel(x+draw.X, y+draw.Y, int((r<<16)|(g<<8)|b), uid, tok)
 		if ok {
 			if rem := len(draw.waited); rem != 0 {
-				fmt.Println("Still ", rem, "pixels in queue... >=", rem * INTERVAL / len(draw.api.cache), "s")
+				fmt.Println("Still ", rem, "pixels in queue... >=", rem*INTERVAL/len(draw.api.cache), "s")
 			}
 			go func() {
-				time.Sleep(time.Duration(INTERVAL) * time.Second - time.Second / 7)
+				time.Sleep(time.Duration(INTERVAL)*time.Second - time.Second/15)
 				draw.unused <- uid
 			}()
 		} else {
@@ -177,11 +177,11 @@ func (draw *ImageDrawer) work() {
 	}
 }
 
-func (draw *ImageDrawer) GetTokens() map[int] string {
+func (draw *ImageDrawer) GetTokens() map[int]string {
 	draw.api.lock.RLock()
 	defer draw.api.lock.RUnlock()
 
-	copyed := make(map[int] string)
+	copyed := make(map[int]string)
 	for k, v := range draw.api.cache {
 		copyed[k] = v
 	}
@@ -209,13 +209,17 @@ func (draw *ImageDrawer) check(ctx context.Context) {
 		fmt.Println("X, Y", x, y)
 
 		put := func(i, j int) {
-			offset := i * y + j
+			offset := i*y + j
 			r, g, b, _ := draw.img.At(i, j).RGBA()
-			r, g, b = r >> 8, g >> 8, b >> 8
+			r, g, b = r>>8, g>>8, b>>8
 			exp := int((r << 16) | (g << 8) | b)
-			if exp != draw.api.GetPixel(draw.X + i, draw.Y + j) && !draw.uncert[offset] {
+			if exp == 0xFFFFFF {
+				return
+			}
+
+			if exp != draw.api.GetPixel(draw.X+i, draw.Y+j) && !draw.uncert[offset] {
 				draw.uncert[offset] = true
-				fmt.Printf("Diff at %d, %d (to %d %d), expect %#x got %#x\n", i, j, i + draw.X, j + draw.Y, exp, draw.api.GetPixel(draw.X + i, draw.Y + j))
+				fmt.Printf("Diff at %d, %d (to %d %d), expect %#x got %#x\n", i, j, i+draw.X, j+draw.Y, exp, draw.api.GetPixel(draw.X+i, draw.Y+j))
 				draw.waited <- offset
 			}
 		}
@@ -227,10 +231,10 @@ func (draw *ImageDrawer) check(ctx context.Context) {
 		// }
 
 		for _, offset := range rand.Perm(x * y) {
-			i, j := offset / y, offset % y
+			i, j := offset/y, offset%y
 			put(i, j)
 		}
-		
+
 		fmt.Println("Draw Remain: ", len(draw.waited))
 		time.Sleep(waitTime * time.Second)
 	}
