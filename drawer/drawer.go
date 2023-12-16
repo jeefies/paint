@@ -20,12 +20,12 @@ func (err DrawerError) Error() string {
 }
 
 const (
-	INTERVAL = 5
-	WORKER_COUNT = 5
+	INTERVAL = 30
+	WORKER_COUNT = 4
 	UNUSED_BUF = 50
 	RESET_BUF = 100
 	UNCERT_LEN = 40000
-	UPDATE_INTERVAL = 60
+	UPDATE_INTERVAL = 60 * 5
 	WAIT_BUF = 6000
 )
 
@@ -168,7 +168,7 @@ func (draw *ImageDrawer) work() {
 				fmt.Println("Still ", rem, "pixels in queue... >=", rem * INTERVAL / len(draw.api.cache), "s")
 			}
 			go func() {
-				time.Sleep(time.Duration(INTERVAL) * time.Second + time.Duration(rand.Intn(100) - 500))
+				time.Sleep(time.Duration(INTERVAL) * time.Second - time.Second / 7)
 				draw.unused <- uid
 			}()
 		} else {
@@ -206,9 +206,10 @@ func (draw *ImageDrawer) check(ctx context.Context) {
 
 		draw.api.Update()
 		x, y := draw.img.Bounds().Dx(), draw.img.Bounds().Dy()
+		fmt.Println("X, Y", x, y)
 
-		for _, offset := range rand.Perm(x * y) {
-			i, j := offset / y, offset % y
+		put := func(i, j int) {
+			offset := i * y + j
 			r, g, b, _ := draw.img.At(i, j).RGBA()
 			r, g, b = r >> 8, g >> 8, b >> 8
 			exp := int((r << 16) | (g << 8) | b)
@@ -219,6 +220,18 @@ func (draw *ImageDrawer) check(ctx context.Context) {
 			}
 		}
 
+		// for i := 0; i < y; i++ {
+		// 	for j := 40; j < 45; j++ {
+		// 		put(j, i)
+		// 	}
+		// }
+
+		for _, offset := range rand.Perm(x * y) {
+			i, j := offset / y, offset % y
+			put(i, j)
+		}
+		
+		fmt.Println("Draw Remain: ", len(draw.waited))
 		time.Sleep(waitTime * time.Second)
 	}
 }

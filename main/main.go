@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"os"
 	"io"
+	"time"
 	draw "jeefy/drawer"
 )
 
@@ -182,6 +183,11 @@ func main() {
 
 	api.ReadToken()
 	readConfig()
+
+	if os.Args[1] == "start" {
+		time.Sleep(5 * time.Second)
+		StartDraw()
+	}
 
 	for {
 		fmt.Print(">>> ")
