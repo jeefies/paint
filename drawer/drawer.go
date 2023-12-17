@@ -6,6 +6,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"log"
+	"math/rand"
 	"os"
 	"sync"
 	"time"
@@ -30,11 +31,12 @@ const (
 )
 
 type ImageDrawer struct {
-	api     *Api
-	ImgPath string
-	img     image.Image
-	X, Y    int
-	uncert  []bool
+	api         *Api
+	ImgPath     string
+	img         image.Image
+	X, Y        int
+	ignoreWhite bool
+	uncert      []bool
 	// pixels waiting to draw
 	waited chan int
 	// unused tokens
@@ -102,6 +104,10 @@ func (draw *ImageDrawer) SetImage(path string) error {
 	return nil
 }
 
+func (draw *ImageDrawer) SetIgnore(ignore bool) {
+	draw.ignoreWhite = ignore
+}
+
 func (draw *ImageDrawer) ImageSize() (int, int) {
 	return draw.img.Bounds().Dx(), draw.img.Bounds().Dy()
 }
@@ -139,6 +145,7 @@ func (draw *ImageDrawer) Start() {
 	}
 
 	go func() {
+		time.Sleep(10 * time.Second)
 		for {
 			timeout := make(chan int)
 			go func() {
@@ -150,6 +157,11 @@ func (draw *ImageDrawer) Start() {
 			case <-draw.ctx.Done():
 				return
 			case <-timeout:
+			}
+
+			if draw.WorkStatus() == 0 {
+				log.Println("Start Maintaining...")
+				return
 			}
 
 			curTime := time.Now().Unix()
@@ -187,7 +199,7 @@ func (draw *ImageDrawer) work(lock *sync.Mutex, counter *int) {
 		}
 
 		exp := int((r << 16) | (g << 8) | b)
-		if exp == 0xFFFFFF {
+		if draw.ignoreWhite && exp == 0xFFFFFF {
 			exp = 0xaaaaaa
 		}
 
@@ -245,7 +257,7 @@ func (draw *ImageDrawer) check(ctx context.Context) {
 			r, g, b, _ := draw.img.At(i, j).RGBA()
 			r, g, b = r>>8, g>>8, b>>8
 			exp := int((r << 16) | (g << 8) | b)
-			if exp == 0xFFFFFF {
+			if draw.ignoreWhite && exp == 0xFFFFFF {
 				exp = 0xaaaaaa
 			}
 
@@ -256,8 +268,8 @@ func (draw *ImageDrawer) check(ctx context.Context) {
 			}
 		}
 
-		// for _, offset := range rand.Perm(x * y) {
-		for offset := 0; offset < x*y; offset++ {
+		for _, offset := range rand.Perm(x * y) {
+			// for offset := 0; offset < x*y; offset++ {
 			i, j := offset/y, offset%y
 			put(i, j)
 		}

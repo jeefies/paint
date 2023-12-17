@@ -106,7 +106,7 @@ func getBoard() {
 			}
 			board[i*HEIGHT+j] = rgb
 		}
-		if i%10 == 0 {
+		if i%50 == 0 {
 			log.Println("Line ", i, "done")
 		}
 	}

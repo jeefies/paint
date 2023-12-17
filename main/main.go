@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	draw "jeefy/drawer"
+	"log"
 	"os"
 	"time"
+
+	draw "jeefy/drawer"
 )
 
 var api *draw.Api
@@ -123,18 +125,15 @@ func StartDraw() {
 	drawer.Start()
 }
 
-func readConfig() {
-	f, err := os.Open("config.txt")
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer f.Close()
-
-	var path string
-	fmt.Fscanln(f, &path)
+func readConfig(f io.Reader, drawer *draw.ImageDrawer) {
+	var path, ignore string
+	fmt.Fscanln(f, &path, &ignore)
 	var x, y int
 	fmt.Fscanln(f, &x, &y)
+
+	if ignore == "ignore" {
+		drawer.SetIgnore(true)
+	}
 
 	drawer.X = x
 	drawer.Y = y
@@ -168,16 +167,37 @@ func readConfig() {
 }
 
 func main() {
-	reader := bufio.NewReader(os.Stdin)
-
 	api.ReadToken()
-	readConfig()
+
+	if len(os.Args) > 2 && os.Args[1] == "task" {
+		f, err := os.Open(os.Args[2])
+		if err != nil {
+			log.Println("Could not Open file: ", os.Args[2])
+			return
+		}
+		defer f.Close()
+		runner := NewTaskRunner(api)
+		runner.ReadTasks(f)
+		runner.Mainloop()
+		return
+	}
+
+	func() {
+		f, err := os.Open("config.txt")
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		defer f.Close()
+		readConfig(f, drawer)
+	}()
 
 	if len(os.Args) > 1 && os.Args[1] == "start" {
 		time.Sleep(3 * time.Second)
 		StartDraw()
 	}
 
+	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Print(">>> ")
 		opt, _ := reader.ReadString('\n')
