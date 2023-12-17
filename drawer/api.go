@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -69,28 +69,32 @@ func pixelToHex(rgb int) string {
 func getBoard() {
 	resp, err := http.Get(boardUrl)
 	if err != nil {
-		fmt.Println("Could not get board!")
+		log.Println("Could not get board!")
 		return
 	}
 	defer resp.Body.Close()
 
 	f, err := os.OpenFile("board.txt", os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Println("Error Open Board !", err)
+		return
+	}
 	defer f.Close()
 
 	reader := bufio.NewReader(resp.Body)
 
 	for i := 0; i < WIDTH; i++ {
 		// n, err := resp.Body.Read(buffer)
-		// fmt.Println("Line Read", n)
-		// fmt.Printf("Line Starts with '%s' Ends with '%s'\n", buffer[:12], buffer[n - 12 : n])
+		// log.Println("Line Read", n)
+		// log.Printf("Line Starts with '%s' Ends with '%s'\n", buffer[:12], buffer[n - 12 : n])
 		buffer, err := reader.ReadBytes('\n')
 		if err == io.EOF {
 			break
 		}
 
 		if err != nil || len(buffer) != 3601 {
-			fmt.Println("UKE !!!")
-			fmt.Println(err)
+			log.Println("UKE !!!")
+			log.Println(err)
 			return
 		}
 
@@ -103,7 +107,7 @@ func getBoard() {
 			board[i*HEIGHT+j] = rgb
 		}
 		if i%10 == 0 {
-			fmt.Println("Line ", i, "done")
+			log.Println("Line ", i, "done")
 		}
 	}
 }
@@ -127,27 +131,23 @@ func saveBoard(fp io.Writer) error {
 }
 
 type TokenResp struct {
-	status int    `json:"status"`
-	data   string `json:"data"`
+	Status int    `json:"status"`
+	Data   string `json:"data"`
 }
 
 func ParseResp(bs []byte) (token TokenResp) {
-	var tmp map[string]interface{}
-	err := json.Unmarshal(bs, &tmp)
+	err := json.Unmarshal(bs, &token)
 
 	if err != nil {
-		fmt.Println("Error: %v", err)
-		return
+		log.Println("Error: ", err)
 	}
 
-	token.status, _ = tmp["status"].(int)
-	token.data, _ = tmp["data"].(string)
 	return
 }
 
 // Token like dfe4d610-70c0-4fe6-b196-9b0e09ac920b
 func getToken(uid int, paste string) (bool, string) {
-	// s := fmt.Sprintf("uid=%v&paste=%v", uid, paste)
+	// s := log.Sprintf("uid=%v&paste=%v", uid, paste)
 	// body := strings.NewReader(s)
 	// resp, err := http.Post(tokenUrl, "x-www-form-urlencoded", body)
 
@@ -155,41 +155,41 @@ func getToken(uid int, paste string) (bool, string) {
 	resp, err := http.PostForm(tokenUrl, body)
 
 	if err != nil {
-		fmt.Println("Could not get Token")
+		log.Println("Could not get Token")
 		return false, err.Error()
 	}
 
-	bs, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println(string(bs))
+	bs, _ := io.ReadAll(resp.Body)
+	log.Println(string(bs))
 
 	tok := ParseResp(bs)
-	tok.status = resp.StatusCode
+	tok.Status = resp.StatusCode
 	if !strings.Contains(string(bs), "200") {
-		return false, tok.data
+		return false, tok.Data
 	}
-	fmt.Println("Get ok!")
-	return true, tok.data
+	log.Println("Get ok!")
+	return true, tok.Data
 }
 
 func setPixel(x, y, c, uid int, token string) bool {
 	body := url.Values{"x": {strconv.Itoa(x)}, "y": {strconv.Itoa(y)}, "color": {pixelToHex(c)}, "uid": {strconv.Itoa(uid)}, "token": {token}}
-	fmt.Println("Set", body)
+	log.Println("Set", body)
 	resp, err := http.PostForm(paintUrl, body)
 
 	if err != nil {
-		fmt.Println("Counld not set Pixel:", err)
+		log.Println("Counld not set Pixel:", err)
 		return false
 	}
 
-	bs, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println(string(bs))
+	bs, _ := io.ReadAll(resp.Body)
+	// log.Println(string(bs))
 
 	tok := ParseResp(bs)
 	if !strings.Contains(string(bs), "200") {
-		fmt.Printf("UKE: %v\n", tok.data)
+		log.Printf("UKE: %v\n", tok.Data)
 		return false
 	}
-	fmt.Println("Ok at", x, y, pixelToHex(c))
+	log.Println("Ok at", x, y, pixelToHex(c))
 	return true
 }
 
@@ -203,9 +203,9 @@ func NewApi() *Api {
 }
 
 func (api *Api) Update() {
-	fmt.Println("Updating...")
+	log.Println("Updating...")
 	getBoard()
-	fmt.Println("Update Done !")
+	log.Println("Update Done !")
 }
 
 func (api *Api) SaveBoard(f io.Writer) error {
@@ -240,7 +240,7 @@ func (api *Api) ClearTokens() {
 func (api *Api) SaveToken() {
 	f, err := os.OpenFile("_api.txt", os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return
 	}
 	defer f.Close()
@@ -258,7 +258,7 @@ func (api *Api) SaveToken() {
 func (api *Api) ReadToken() {
 	f, err := os.Open("_api.txt")
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return
 	}
 	defer f.Close()
@@ -270,7 +270,7 @@ func (api *Api) ReadToken() {
 	for i := 0; i < n; i++ {
 		fmt.Fscan(f, &uid, &tok)
 		api.setCache(uid, tok)
-		fmt.Println("Cache ", uid, tok)
+		log.Println("Cache ", uid, tok)
 	}
 }
 

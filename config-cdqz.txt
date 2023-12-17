@@ -1,5 +1,5 @@
-world.png
-280 200
+cdqz-160x120-filter.png
+200 80
 23
 78206 7bf00pz2
 747541 19mmqgzk
