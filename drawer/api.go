@@ -21,7 +21,7 @@ import (
 
 const (
 	// rootUrl  = "https://www.oi-search.com/paintboard"
-	rootUrl = "https://pbdv.ishpduwu.link/paintboard"
+	rootUrl  = "https://pbdv.ishpduwu.link/paintboard"
 	boardUrl = rootUrl + "/board"
 	paintUrl = rootUrl + "/paint"
 	tokenUrl = rootUrl + "/gettoken"

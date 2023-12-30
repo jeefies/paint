@@ -26,9 +26,9 @@ const (
 	UNUSED_BUF      = 50
 	RESET_BUF       = 100
 	UNCERT_LEN      = 40000
-	UPDATE_INTERVAL = 62
+	UPDATE_INTERVAL = 61 * 3
 	WAIT_BUF        = 40000
-	AHEAD			= 8
+	AHEAD           = 8
 )
 
 type ImageDrawer struct {
@@ -148,13 +148,15 @@ func (draw *ImageDrawer) Start() {
 		lock.Unlock()
 	}()
 
+	draw.api.Update()
 	go draw.check(draw.ctx)
+
+	time.Sleep(5 * time.Second)
 	for i := 0; i < WORKER_COUNT; i++ {
 		go draw.work(lock, counter)
 	}
 
 	go func() {
-		time.Sleep(20 * time.Second)
 		startTime := time.Now().Unix()
 		for {
 			timeout := make(chan int)
@@ -259,7 +261,7 @@ func (draw *ImageDrawer) check(ctx context.Context) {
 			return
 		}
 
-		draw.api.Update()
+		go draw.api.Update()
 		x, y := draw.img.Bounds().Dx(), draw.img.Bounds().Dy()
 
 		put := func(i, j int) {
@@ -278,8 +280,7 @@ func (draw *ImageDrawer) check(ctx context.Context) {
 			}
 		}
 
-		log.Println(rand.Int())
-		if len(draw.waited) != 0 && len(draw.waited) <= 3000 && false {
+		if len(draw.waited) != 0 && len(draw.waited) <= 3000 {
 			for len(draw.waited) > len(draw.api.cache) {
 				draw.uncert[<-draw.waited] = false
 			}
