@@ -1,3 +1,4 @@
-1
-config-world.txt
+3
+config-cdsd.txt
+config-mle.txt
 config-cdqz.txt

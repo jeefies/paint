@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"image"
 	"image/color"
@@ -19,7 +20,8 @@ import (
 )
 
 const (
-	rootUrl  = "https://www.oi-search.com/paintboard"
+	// rootUrl  = "https://www.oi-search.com/paintboard"
+	rootUrl = "https://pbdv.ishpduwu.link/paintboard"
 	boardUrl = rootUrl + "/board"
 	paintUrl = rootUrl + "/paint"
 	tokenUrl = rootUrl + "/gettoken"
@@ -31,8 +33,10 @@ const (
 )
 
 var board [WIDTH * HEIGHT]int
+var boardLock *sync.Mutex
 
 func init() {
+	boardLock = new(sync.Mutex)
 }
 
 func getPixel(x int, y int) int {
@@ -67,6 +71,14 @@ func pixelToHex(rgb int) string {
 }
 
 func getBoard() {
+	boardLock.Lock()
+	defer func() {
+		go func() {
+			time.Sleep(UPDATE_INTERVAL * time.Second)
+			boardLock.Unlock()
+		}()
+	}()
+
 	resp, err := http.Get(boardUrl)
 	if err != nil {
 		log.Println("Could not get board!")

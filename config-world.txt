@@ -1,0 +1,3 @@
+world.png not
+550 210
+0

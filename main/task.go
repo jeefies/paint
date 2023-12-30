@@ -54,7 +54,7 @@ func (run *TaskRunner) Mainloop() {
 		log.Println("Start Task: ", k)
 		task.draw.Start()
 
-		for i := 1; i <= 10; i++ {
+		for i := 1; i <= 20; i++ {
 			log.Println("Wait ", i, "seconds")
 			time.Sleep(time.Second)
 		}

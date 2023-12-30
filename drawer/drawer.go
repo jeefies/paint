@@ -26,8 +26,9 @@ const (
 	UNUSED_BUF      = 50
 	RESET_BUF       = 100
 	UNCERT_LEN      = 40000
-	UPDATE_INTERVAL = 60 * 5
+	UPDATE_INTERVAL = 62
 	WAIT_BUF        = 40000
+	AHEAD			= 8
 )
 
 type ImageDrawer struct {
@@ -137,7 +138,15 @@ func (draw *ImageDrawer) Start() {
 	draw.ctx, draw.cancelFunc = context.WithCancel(context.Background())
 
 	lock, counter := new(sync.Mutex), new(int)
-	startTime := time.Now().Unix()
+
+	go func() {
+		log.Println("Available tokens: ")
+		lock.Lock()
+		for k, v := range draw.api.cache {
+			log.Println(k, v)
+		}
+		lock.Unlock()
+	}()
 
 	go draw.check(draw.ctx)
 	for i := 0; i < WORKER_COUNT; i++ {
@@ -145,7 +154,8 @@ func (draw *ImageDrawer) Start() {
 	}
 
 	go func() {
-		time.Sleep(10 * time.Second)
+		time.Sleep(20 * time.Second)
+		startTime := time.Now().Unix()
 		for {
 			timeout := make(chan int)
 			go func() {
@@ -188,19 +198,19 @@ func (draw *ImageDrawer) work(lock *sync.Mutex, counter *int) {
 			return
 		}
 		draw.uncert[v] = false
-		uid := <-draw.unused
 		x, y := v/ImY, v%ImY
 		r, g, b, _ := draw.img.At(x, y).RGBA()
 		r, g, b = r>>8, g>>8, b>>8
 		// log.Println("Try Setting ", draw.X + x, draw.Y, r, g, b)
-		tok, ok := draw.api.getCache(uid)
-		if !ok {
+		exp := int((r << 16) | (g << 8) | b)
+		if draw.ignoreWhite && exp == 0xFFFFFF {
 			continue
 		}
 
-		exp := int((r << 16) | (g << 8) | b)
-		if draw.ignoreWhite && exp == 0xFFFFFF {
-			exp = 0xaaaaaa
+		uid := <-draw.unused
+		tok, ok := draw.api.getCache(uid)
+		if !ok {
+			continue
 		}
 
 		ok = draw.api.SetPixel(x+draw.X, y+draw.Y, exp, uid, tok)
@@ -213,7 +223,7 @@ func (draw *ImageDrawer) work(lock *sync.Mutex, counter *int) {
 				*counter += 1
 				lock.Unlock()
 
-				time.Sleep(time.Duration(INTERVAL)*time.Second - time.Second/15)
+				time.Sleep(time.Duration(INTERVAL)*time.Second - time.Second/AHEAD)
 				draw.unused <- uid
 			}()
 		} else {
@@ -258,7 +268,7 @@ func (draw *ImageDrawer) check(ctx context.Context) {
 			r, g, b = r>>8, g>>8, b>>8
 			exp := int((r << 16) | (g << 8) | b)
 			if draw.ignoreWhite && exp == 0xFFFFFF {
-				exp = 0xaaaaaa
+				return
 			}
 
 			if exp != draw.api.GetPixel(draw.X+i, draw.Y+j) && !draw.uncert[offset] {
@@ -268,10 +278,22 @@ func (draw *ImageDrawer) check(ctx context.Context) {
 			}
 		}
 
-		for _, offset := range rand.Perm(x * y) {
-			// for offset := 0; offset < x*y; offset++ {
-			i, j := offset/y, offset%y
-			put(i, j)
+		log.Println(rand.Int())
+		if len(draw.waited) != 0 && len(draw.waited) <= 3000 && false {
+			for len(draw.waited) > len(draw.api.cache) {
+				draw.uncert[<-draw.waited] = false
+			}
+
+			log.Println("By Order")
+			for offset := 0; offset < x*y; offset++ {
+				i, j := offset/y, offset%y
+				put(i, j)
+			}
+		} else {
+			for _, offset := range rand.Perm(x * y) {
+				i, j := offset/y, offset%y
+				put(i, j)
+			}
 		}
 
 		log.Println("Draw Remain: ", len(draw.waited))
