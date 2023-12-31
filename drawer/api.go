@@ -70,14 +70,16 @@ func pixelToHex(rgb int) string {
 	return string(bs)
 }
 
-func getBoard() {
-	boardLock.Lock()
-	defer func() {
-		go func() {
-			time.Sleep(UPDATE_INTERVAL * time.Second)
-			boardLock.Unlock()
+func getBoard(force bool) {
+	if !force {
+		boardLock.Lock()
+		defer func() {
+			go func() {
+				time.Sleep(UPDATE_INTERVAL * time.Second)
+				boardLock.Unlock()
+			}()
 		}()
-	}()
+	}
 
 	resp, err := http.Get(boardUrl)
 	if err != nil {
@@ -199,6 +201,7 @@ func setPixel(x, y, c, uid int, token string) bool {
 	tok := ParseResp(bs)
 	if !strings.Contains(string(bs), "200") {
 		log.Printf("UKE: %v\n", tok.Data)
+		log.Println("Origin Message: ", string(bs))
 		return false
 	}
 	log.Println("Ok at", x, y, pixelToHex(c))
@@ -214,9 +217,9 @@ func NewApi() *Api {
 	return &Api{make(map[int]string), new(sync.RWMutex)}
 }
 
-func (api *Api) Update() {
+func (api *Api) Update(force bool) {
 	log.Println("Updating...")
-	getBoard()
+	getBoard(force)
 	log.Println("Update Done !")
 }
 

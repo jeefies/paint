@@ -65,4 +65,6 @@ func (run *TaskRunner) Mainloop() {
 
 		log.Println("Task: ", k, "...Done !!!")
 	}
+
+	time.Sleep(time.Second * 100000)
 }

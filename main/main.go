@@ -126,10 +126,13 @@ func StartDraw() {
 }
 
 func readConfig(f io.Reader, drawer *draw.ImageDrawer) {
+	log.Println("Reading Config")
 	var path, ignore string
 	fmt.Fscanln(f, &path, &ignore)
+	log.Println("Image Path: ", path, "[ignore: ", ignore, "]")
 	var x, y int
 	fmt.Fscanln(f, &x, &y)
+	log.Println("Put AT ", x, y)
 
 	if ignore == "ignore" {
 		drawer.SetIgnore(true)
@@ -141,6 +144,7 @@ func readConfig(f io.Reader, drawer *draw.ImageDrawer) {
 
 	var n int
 	fmt.Fscanln(f, &n)
+	log.Println("Extra token count:", n)
 
 	for i := 0; i < n; i++ {
 		for {
@@ -164,6 +168,8 @@ func readConfig(f io.Reader, drawer *draw.ImageDrawer) {
 			fmt.Println("Token", uid, "fetched", tok, "!")
 		}
 	}
+
+	log.Println("Read Done")
 }
 
 func main() {
@@ -220,7 +226,7 @@ func main() {
 		} else if opt[0] == 'p' {
 			PrintPixel()
 		} else if opt[0] == 'u' {
-			api.Update()
+			api.Update(true)
 		} else {
 			fmt.Println("帮助：")
 			fmt.Println("输入 h 获取帮助")

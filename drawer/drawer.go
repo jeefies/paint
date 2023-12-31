@@ -22,13 +22,14 @@ func (err DrawerError) Error() string {
 
 const (
 	INTERVAL        = 30
-	WORKER_COUNT    = 4
+	WORKER_COUNT    = 7
 	UNUSED_BUF      = 50
 	RESET_BUF       = 100
 	UNCERT_LEN      = 40000
-	UPDATE_INTERVAL = 61 * 3
+	UPDATE_INTERVAL = 30 * 2
 	WAIT_BUF        = 40000
-	AHEAD           = 8
+	AHEADUP         = 4
+	AHEAD           = 7
 )
 
 type ImageDrawer struct {
@@ -37,7 +38,7 @@ type ImageDrawer struct {
 	img         image.Image
 	X, Y        int
 	ignoreWhite bool
-	uncert      []bool
+	inque      []bool
 	// pixels waiting to draw
 	waited chan int
 	// unused tokens
@@ -50,7 +51,7 @@ func NewDrawer(api *Api) *ImageDrawer {
 	draw := &ImageDrawer{}
 	draw.api = api
 	draw.waited = make(chan int, WAIT_BUF)
-	draw.uncert = make([]bool, UNCERT_LEN)
+	draw.inque = make([]bool, UNCERT_LEN)
 	draw.unused = make(chan int, UNUSED_BUF)
 	draw.ctx, draw.cancelFunc = nil, nil
 	return draw
@@ -69,8 +70,8 @@ func (draw *ImageDrawer) Reset() {
 
 	draw.waited = nil
 	draw.unused = nil
-	for i := range draw.uncert {
-		draw.uncert[i] = false
+	for i := range draw.inque {
+		draw.inque[i] = false
 	}
 	draw.waited = make(chan int, WAIT_BUF)
 	draw.unused = make(chan int, UNUSED_BUF)
@@ -148,7 +149,7 @@ func (draw *ImageDrawer) Start() {
 		lock.Unlock()
 	}()
 
-	draw.api.Update()
+	draw.api.Update(true)
 	go draw.check(draw.ctx)
 
 	time.Sleep(5 * time.Second)
@@ -199,7 +200,7 @@ func (draw *ImageDrawer) work(lock *sync.Mutex, counter *int) {
 			log.Println("Work Quit...")
 			return
 		}
-		draw.uncert[v] = false
+		draw.inque[v] = false
 		x, y := v/ImY, v%ImY
 		r, g, b, _ := draw.img.At(x, y).RGBA()
 		r, g, b = r>>8, g>>8, b>>8
@@ -225,7 +226,7 @@ func (draw *ImageDrawer) work(lock *sync.Mutex, counter *int) {
 				*counter += 1
 				lock.Unlock()
 
-				time.Sleep(time.Duration(INTERVAL)*time.Second - time.Second/AHEAD)
+				time.Sleep(time.Duration(INTERVAL)*time.Second - time.Second*AHEADUP/AHEAD)
 				draw.unused <- uid
 			}()
 		} else {
@@ -248,6 +249,7 @@ func (draw *ImageDrawer) GetTokens() map[int]string {
 func (draw *ImageDrawer) check(ctx context.Context) {
 	timeout := make(chan int, 1)
 	waitTime := time.Duration(UPDATE_INTERVAL)
+	first := true
 	for {
 		go func() {
 			time.Sleep(time.Second)
@@ -261,7 +263,6 @@ func (draw *ImageDrawer) check(ctx context.Context) {
 			return
 		}
 
-		go draw.api.Update()
 		x, y := draw.img.Bounds().Dx(), draw.img.Bounds().Dy()
 
 		put := func(i, j int) {
@@ -273,17 +274,18 @@ func (draw *ImageDrawer) check(ctx context.Context) {
 				return
 			}
 
-			if exp != draw.api.GetPixel(draw.X+i, draw.Y+j) && !draw.uncert[offset] {
-				draw.uncert[offset] = true
+			if exp != draw.api.GetPixel(draw.X+i, draw.Y+j) && !draw.inque[offset] {
+				draw.inque[offset] = true
 				log.Printf("Diff at %d, %d (to %d %d), expect %#x got %#x\n", i, j, i+draw.X, j+draw.Y, exp, draw.api.GetPixel(draw.X+i, draw.Y+j))
 				draw.waited <- offset
 			}
 		}
 
-		if len(draw.waited) != 0 && len(draw.waited) <= 3000 {
-			for len(draw.waited) > len(draw.api.cache) {
-				draw.uncert[<-draw.waited] = false
-			}
+		log.Println(first)
+		if !first && len(draw.waited) <= 1000 {
+			// for len(draw.waited) > len(draw.api.cache) {
+			// 	draw.inque[<-draw.waited] = false
+			// }
 
 			log.Println("By Order")
 			for offset := 0; offset < x*y; offset++ {
@@ -297,7 +299,9 @@ func (draw *ImageDrawer) check(ctx context.Context) {
 			}
 		}
 
+		first = false
 		log.Println("Draw Remain: ", len(draw.waited))
+		go draw.api.Update(false)
 		time.Sleep(waitTime * time.Second)
 	}
 }
