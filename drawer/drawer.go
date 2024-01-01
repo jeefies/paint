@@ -28,7 +28,7 @@ const (
 	UNCERT_LEN      = 40000
 	UPDATE_INTERVAL = 30 * 2
 	WAIT_BUF        = 40000
-	AHEADUP         = 4
+	AHEADUP         = 2
 	AHEAD           = 7
 )
 
@@ -282,7 +282,7 @@ func (draw *ImageDrawer) check(ctx context.Context) {
 		}
 
 		log.Println(first)
-		if !first && len(draw.waited) <= 1000 {
+		if !first || len(draw.waited) <= 1000 {
 			// for len(draw.waited) > len(draw.api.cache) {
 			// 	draw.inque[<-draw.waited] = false
 			// }
